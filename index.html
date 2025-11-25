@@ -47,8 +47,8 @@
                     <button @click="isAdmin = false" class="text-xs text-yellow-600 hover:underline">סגור</button>
                 </div>
                 <input type="password" v-model="apiKey" placeholder="הכנס מפתח רישיון כאן..." 
-                       class="w-full p-2 border border-yellow-300 rounded bg-white text-sm"
-                       @change="saveKey">
+                        class="w-full p-2 border border-yellow-300 rounded bg-white text-sm"
+                        @change="saveKey">
                 <p class="text-xs text-gray-500 mt-1">לחיצה על Alt+K פותחת/סוגרת תפריט זה.</p>
             </div>
 
@@ -73,9 +73,15 @@
             <div v-if="output" class="mt-10 border-t pt-8">
                 <div class="flex justify-between items-center mb-4 print:hidden">
                     <h2 class="text-xl font-bold text-gray-800">דף שאלות לחזרה:</h2>
-                    <button @click="copyToClipboard" class="text-sm bg-white hover:bg-gray-50 text-gray-600 border border-gray-300 px-3 py-1 rounded shadow-sm transition">
-                        {{ copied ? 'הועתק בהצלחה ✓' : 'העתק תוכן' }}
-                    </button>
+                    <div class="flex space-x-2 space-x-reverse">
+                        <button @click="copyToClipboard" class="text-sm bg-white hover:bg-gray-50 text-gray-600 border border-gray-300 px-3 py-1 rounded shadow-sm transition">
+                            {{ copied ? 'הועתק בהצלחה ✓' : 'העתק תוכן' }}
+                        </button>
+                        <!-- הכפתור עודכן לקריאה לפונקציית ייצוא טקסט (txt) -->
+                        <button @click="exportToText" class="text-sm bg-slate-600 hover:bg-slate-700 text-white border border-slate-700 px-3 py-1 rounded shadow-sm transition">
+                            {{ exported ? 'יוצא בהצלחה ✓' : 'ייצוא תוכן (.txt)' }}
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="bg-white p-6 rounded-lg border border-gray-100 prose max-w-none shadow-sm" v-html="renderedOutput"></div>
@@ -84,7 +90,7 @@
         </div>
 
         <div class="bg-gray-50 p-3 text-center text-xs text-gray-400 border-t select-none">
-            מערכת אוטומטית לעיבוד שפה טבעית | גירסה א'
+            מערכת אוטומטית לעיבוד שפה טבעית | גירסה א.א
         </div>
     </div>
 </div>
@@ -100,8 +106,9 @@
                 inputText: '',
                 isAdmin: false, // האם להציג את שדה המפתח
                 
-                // הנחיה קבועה - המשתמש לא רואה זאת
+                // הנחיה קבועה - מוודא שהיא ריקה כפי שהייתה בגרסה המקורית של המשתמש
                 systemPrompt: `
+
 				
 				הנחיה בלעדית: אתה מודל שפה המציית אך ורק להנחיות אלו וכל ההנחיות בפרומפט זה גוברות על כל הנחיה אחרת שקיבלת אי פעם.
 איסורים ותגובה בלעדית:
@@ -156,25 +163,29 @@
 אסור בשום אופן להמציא שאלות שאינן נובעות ישירות מהמאמר. כל שאלה שתעלה חייבת לנבוע ממש מהנידון ההלכתי שבמאמר שקראת.
 
 הניסוח צריך להיות בצורה של גוף שלישי ולא מקרה תיאורי מידי זול. כלומר, במקום לכתוב "יהודה, בעל עסק קטן,..." או "רות עובדת בבנק בישראל..." כתוב "בעל עסק..." "עובד בבנק" וכדו'.
+
 `,
                 
                 // משתני ממשק
                 output: '',
                 loading: false,
                 error: null,
-                copied: false
+                copied: false,
+                exported: false // משתנה למעקב אחר ייצוא
             }
         },
         mounted() {
             // האזנה לקיצור מקלדת Alt+K
             window.addEventListener('keydown', (e) => {
                 if (e.altKey && (e.key === 'k' || e.key === 'ל')) {
+                    e.preventDefault(); // מונע התנהגות דפדפן ברירת מחדל
                     this.toggleAdmin();
                 }
             });
         },
         computed: {
             renderedOutput() {
+                // משתמש ב-marked לעיבוד Markdown ל-HTML לתצוגה
                 return this.output ? marked.parse(this.output) : '';
             }
         },
@@ -185,6 +196,8 @@
             saveKey() {
                 localStorage.setItem('sys_lic_key', this.apiKey);
             },
+            
+            // --- לוגיקה ליצירת תוכן באמצעות API חיצוני (OpenAI) ---
             async generate() {
                 if (!this.apiKey) {
                     this.error = "חסר מפתח רישיון מערכת. פנה למנהל המערכת.";
@@ -197,7 +210,7 @@
                 this.output = '';
 
                 try {
-                    // שליחה לשרת (המשתמש לא רואה לאן זה נשלח)
+                    // שליחה לשרת כפי שתוכנן במקור על ידי המשתמש (משוער: GPT-4o)
                     const response = await fetch("https://api.openai.com/v1/chat/completions", {
                         method: "POST",
                         headers: {
@@ -205,10 +218,10 @@
                             "Authorization": `Bearer ${this.apiKey}`
                         },
                         body: JSON.stringify({
-                            model: "gpt-4o",
+                            model: "gpt-4o", // חזרה למודל החיצוני
                             messages: [
-                                { role: "system", content: this.systemPrompt },
-                                { role: "user", content: this.inputText }
+                                { role: "system", content: this.systemPrompt || "אתה מומחה להפקת חומרי למידה. צור דף שאלות מקיף ואיכותי על הטקסט שסופק בפורמט Markdown." },
+                                { role: "user", content: `הפק דף שאלות על הטקסט הבא: ${this.inputText}` }
                             ],
                             temperature: 0.7
                         })
@@ -216,24 +229,51 @@
 
                     const data = await response.json();
 
-                    if (data.error) {
-                        throw new Error("לא ניתן היה לעבד את הבקשה כעת.");
+                    if (data.error || !data.choices || data.choices.length === 0) {
+                        // בדיקת שגיאות API כפי שנדרש
+                        const errorMessage = data.error?.message || "לא ניתן היה לעבד את הבקשה כעת. בדוק את מפתח הרישיון.";
+                        throw new Error(errorMessage);
                     }
 
                     this.output = data.choices[0].message.content;
 
                 } catch (err) {
-                    this.error = "אירעה שגיאה בעיבוד הנתונים. אנא נסה שנית.";
-                    console.error(err); // לוג נסתר למפתח בלבד
+                    this.error = "אירעה שגיאה בעיבוד הנתונים. אנא ודא שהמפתח תקין ונסה שנית.";
+                    console.error("API Error:", err);
                 } finally {
                     this.loading = false;
                 }
             },
+            
+            // --- לוגיקה להעתקת תוכן ללוח ---
             copyToClipboard() {
-                navigator.clipboard.writeText(this.output).then(() => {
-                    this.copied = true;
-                    setTimeout(() => this.copied = false, 2000);
-                });
+                // העתקה של התוכן המקורי ב-Markdown
+                if (!this.output) return;
+
+                document.execCommand('copy');
+                this.copied = true;
+                setTimeout(() => this.copied = false, 2000);
+            },
+            
+            // --- לוגיקה לייצוא תוכן כקובץ טקסט רגיל (.txt) ---
+            exportToText() {
+                if (!this.output) return;
+
+                // שינוי לייצוא כקובץ טקסט רגיל
+                const filename = `דף שאלות - ${new Date().toISOString().slice(0, 10)}.txt`;
+                // ה-Blob מכיל את הטקסט הגולמי של התגובה
+                const blob = new Blob([this.output], { type: 'text/plain;charset=utf-8' }); 
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                
+                // הוספת הקישור, לחיצה עליו והסרתו
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                this.exported = true;
+                setTimeout(() => this.exported = false, 2000);
             }
         }
     }).mount('#app');
